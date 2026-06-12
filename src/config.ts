@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { z } from 'zod';
 
 const HostPortSchema = z.object({
@@ -58,4 +60,38 @@ export function loadConfig(path: string = configPath()): Config {
     throw new Error(`Invalid config at ${path}: ${issues}`);
   }
   return result.data;
+}
+
+// --- secret resolution ---
+
+const execFileAsync = promisify(execFile);
+
+export type OpReader = (ref: string) => Promise<string>;
+
+const opRead: OpReader = async ref => {
+  const { stdout } = await execFileAsync('op', ['read', ref]);
+  return stdout.replace(/\r?\n$/, '');
+};
+
+const secretCache = new Map<string, string>();
+
+export function clearSecretCache(): void {
+  secretCache.clear();
+}
+
+export async function resolvePassword(pass: string, reader: OpReader = opRead): Promise<string> {
+  if (!pass.startsWith('op://')) return pass;
+  const cached = secretCache.get(pass);
+  if (cached !== undefined) return cached;
+  let value: string;
+  try {
+    value = await reader(pass);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message.split('\n')[0] : String(err);
+    throw new Error(
+      `Failed to resolve 1Password reference ${pass} — is the op CLI installed and signed in? (${detail})`,
+    );
+  }
+  secretCache.set(pass, value);
+  return value;
 }
