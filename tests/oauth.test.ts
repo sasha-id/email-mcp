@@ -123,4 +123,22 @@ describe('M365Auth device flow', () => {
     const { auth } = makeAuth([{ status: 400, body: { error: 'invalid_client', error_description: 'bad client' } }]);
     await expect(auth.startDeviceFlow()).rejects.toThrow(/bad client/);
   });
+
+  it('contains a poll network error instead of crashing the process', async () => {
+    const tokenDir = mkdtempSync(join(tmpdir(), 'email-mcp-tok-'));
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      if (calls === 1) {
+        // the devicecode request succeeds...
+        return { ok: true, status: 200, json: async () => DEVICECODE_OK.body } as Response;
+      }
+      // ...then the first poll token request rejects (network down)
+      throw new Error('network down');
+    }) as typeof fetch;
+    const auth = new M365Auth({ account: 'work', tenant: 'corp.example', tokenDir, fetchFn });
+    await auth.startDeviceFlow();
+    await auth.pollPromise; // must RESOLVE (not reject) — proves no unhandled rejection
+    expect(auth.flowStatus()).toEqual({ state: 'failed', error: 'polling error: network down' });
+  });
 });

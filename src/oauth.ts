@@ -155,7 +155,15 @@ export class M365Auth {
       data.device_code,
       ((data.interval as number) ?? 5) * 1000,
       Date.now() + (data.expires_in as number) * 1000,
-    );
+    ).catch(err => {
+      // A transient network/parse error during the long poll window must never
+      // become an unhandled rejection — that would crash the whole MCP server.
+      // Record it so the next email_authenticate call surfaces the failure.
+      if (this.flow) {
+        this.flow.status = 'failed';
+        this.flow.error = `polling error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
     return { verificationUri, userCode };
   }
 
