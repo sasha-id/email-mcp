@@ -28,7 +28,8 @@ export function registerSearch(server: McpServer, manager: AccountManager): void
     async ({ account, mailbox, limit, ...params }) =>
       run(async () => {
         const text = await manager.withMailbox(account, mailbox, async client => {
-          const uids = (await client.search(buildSearchQuery(params), { uid: true })) || [];
+          const uids = await client.search(buildSearchQuery(params), { uid: true });
+          if (!uids) throw new Error(`Search failed in ${account}/${mailbox} — the server rejected the query.`);
           if (uids.length === 0) return `No matches in ${account}/${mailbox}.`;
           const selected = [...uids].sort((a, b) => b - a).slice(0, limit);
           const messages: MessageSummary[] = [];

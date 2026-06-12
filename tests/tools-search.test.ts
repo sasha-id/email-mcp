@@ -78,4 +78,13 @@ describe('email_search', () => {
     expect(isError(result)).toBe(true);
     expect(textOf(result)).toMatch(/YYYY-MM-DD/);
   });
+
+  it('surfaces a failed SEARCH as an error, not "No matches"', async () => {
+    const fake = new FakeImap();
+    fake.search = async () => false as unknown as number[];
+    const client = await connectServer(server => registerSearch(server, managerWith(fake)));
+    const result = await client.callTool({ name: 'email_search', arguments: { account: 'personal' } });
+    expect(isError(result)).toBe(true);
+    expect(textOf(result)).toMatch(/Search failed/);
+  });
 });

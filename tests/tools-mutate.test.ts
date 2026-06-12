@@ -27,11 +27,24 @@ describe('email_mark', () => {
     });
     expect(isError(result)).toBe(true);
   });
+
+  it('reports an error when the flag store fails', async () => {
+    const fake = new FakeImap();
+    fake.messageFlagsAdd = async () => false;
+    const client = await connectServer(server => registerMark(server, managerWith(fake)));
+    const result = await client.callTool({
+      name: 'email_mark',
+      arguments: { account: 'personal', uids: [1], add: ['\\Seen'] },
+    });
+    expect(isError(result)).toBe(true);
+    expect(textOf(result)).toMatch(/Failed to add flags/);
+  });
 });
 
 describe('email_move', () => {
   it('moves a uid batch to the target mailbox', async () => {
     const fake = new FakeImap();
+    fake.folders = [{ path: 'Archive' }];
     const client = await connectServer(server => registerMove(server, managerWith(fake)));
     const result = await client.callTool({
       name: 'email_move',
@@ -40,6 +53,31 @@ describe('email_move', () => {
     expect(isError(result)).toBe(false);
     expect(fake.callsTo('messageMove')[0].args).toEqual([[5, 6], 'Archive', { uid: true }]);
     expect(textOf(result)).toBe('Moved 2 message(s) from INBOX to Archive in personal.');
+  });
+
+  it('reports an error when the move fails', async () => {
+    const fake = new FakeImap();
+    fake.folders = [{ path: 'Archive' }];
+    fake.messageMove = async () => false;
+    const client = await connectServer(server => registerMove(server, managerWith(fake)));
+    const result = await client.callTool({
+      name: 'email_move',
+      arguments: { account: 'personal', uids: [5], target: 'Archive' },
+    });
+    expect(isError(result)).toBe(true);
+    expect(textOf(result)).toMatch(/Move to "Archive" failed/);
+  });
+
+  it('reports an error when the target folder does not exist', async () => {
+    const fake = new FakeImap();
+    fake.folders = [{ path: 'INBOX' }];
+    const client = await connectServer(server => registerMove(server, managerWith(fake)));
+    const result = await client.callTool({
+      name: 'email_move',
+      arguments: { account: 'personal', uids: [5], target: 'Nope' },
+    });
+    expect(isError(result)).toBe(true);
+    expect(textOf(result)).toMatch(/does not exist/);
   });
 });
 
@@ -92,5 +130,17 @@ describe('email_delete', () => {
     });
     expect(isError(result)).toBe(true);
     expect(textOf(result)).toMatch(/permanent: true/);
+  });
+
+  it('reports an error when a permanent delete fails', async () => {
+    const fake = new FakeImap();
+    fake.messageDelete = async () => false;
+    const client = await connectServer(server => registerDelete(server, managerWith(fake)));
+    const result = await client.callTool({
+      name: 'email_delete',
+      arguments: { account: 'personal', uids: [9], permanent: true },
+    });
+    expect(isError(result)).toBe(true);
+    expect(textOf(result)).toMatch(/Permanent delete failed/);
   });
 });

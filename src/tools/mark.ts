@@ -25,8 +25,12 @@ export function registerMark(server: McpServer, manager: AccountManager): void {
           return fail('Provide flags to add and/or remove.');
         }
         await manager.withMailbox(account, mailbox, async client => {
-          if (add.length > 0) await client.messageFlagsAdd(uids, [...add], { uid: true });
-          if (remove.length > 0) await client.messageFlagsRemove(uids, [...remove], { uid: true });
+          if (add.length > 0 && !(await client.messageFlagsAdd(uids, [...add], { uid: true }))) {
+            throw new Error(`Failed to add flags in ${account}/${mailbox}.`);
+          }
+          if (remove.length > 0 && !(await client.messageFlagsRemove(uids, [...remove], { uid: true }))) {
+            throw new Error(`Failed to remove flags in ${account}/${mailbox}.`);
+          }
         });
         const did = [
           add.length > 0 ? `added ${add.join(' ')}` : '',

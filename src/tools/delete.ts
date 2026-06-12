@@ -20,7 +20,8 @@ export function registerDelete(server: McpServer, manager: AccountManager): void
       run(async () => {
         const text = await manager.withMailbox(account, mailbox, async client => {
           if (permanent) {
-            await client.messageDelete(uids, { uid: true });
+            const deleted = await client.messageDelete(uids, { uid: true });
+            if (!deleted) throw new Error(`Permanent delete failed in ${account}/${mailbox}.`);
             return `Permanently deleted ${uids.length} message(s) from ${account}/${mailbox}.`;
           }
           const folders = await client.list();
@@ -33,7 +34,8 @@ export function registerDelete(server: McpServer, manager: AccountManager): void
           if (trash.path === mailbox) {
             throw new Error(`${mailbox} is already the trash folder — use permanent: true to expunge.`);
           }
-          await client.messageMove(uids, trash.path, { uid: true });
+          const moved = await client.messageMove(uids, trash.path, { uid: true });
+          if (!moved) throw new Error(`Move to ${trash.path} failed in ${account}/${mailbox}.`);
           return `Moved ${uids.length} message(s) from ${account}/${mailbox} to ${trash.path}.`;
         });
         return ok(text);
