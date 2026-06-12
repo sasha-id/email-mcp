@@ -28,7 +28,7 @@ async function composeRaw(mail: SendMailOptions): Promise<Buffer> {
 }
 
 const defaultSendRaw: NonNullable<SendDeps['sendRaw']> = async (transport, envelope, raw) => {
-  const smtp = nodemailer.createTransport(transport as never);
+  const smtp = nodemailer.createTransport({ ...transport, requireTLS: !transport.secure } as never);
   try {
     await smtp.sendMail({ envelope, raw });
   } finally {
