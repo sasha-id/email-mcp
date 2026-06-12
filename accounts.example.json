@@ -1,0 +1,17 @@
+{
+  "accounts": {
+    "personal": {
+      "user": "you@example.com",
+      "imap": { "host": "imap.example.com", "port": 993 },
+      "smtp": { "host": "smtp.example.com", "port": 465 },
+      "auth": { "type": "password", "pass": "op://Private/example-email/password" },
+      "appendToSent": true
+    },
+    "work": {
+      "user": "you@company.com",
+      "imap": { "host": "outlook.office365.com", "port": 993 },
+      "smtp": { "host": "smtp.office365.com", "port": 587 },
+      "auth": { "type": "m365-oauth", "tenant": "yourcompany.com" }
+    }
+  }
+}
