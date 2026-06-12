@@ -90,4 +90,44 @@ describe('email_send', () => {
     expect(isError(result)).toBe(true);
     expect(textOf(result)).toMatch(/no smtp configuration/);
   });
+
+  it('keeps bcc out of the message headers but in the delivery envelope', async () => {
+    const fake = new FakeImap();
+    fake.folders = [{ path: 'Sent', specialUse: '\\Sent' }];
+    const { sent, sendRaw } = captureSend();
+    const client = await connectServer(server => registerSend(server, managerWith(fake), { sendRaw }));
+    const result = await client.callTool({
+      name: 'email_send',
+      arguments: {
+        account: 'personal',
+        to: ['bob@example.com'],
+        bcc: ['secret-bcc@example.com'],
+        subject: 'Hello',
+        text: 'Hi',
+      },
+    });
+    expect(isError(result)).toBe(false);
+    const raw = sent[0].raw.toString();
+    expect(raw).not.toMatch(/^Bcc:/im); // no Bcc header leaked to recipients
+    expect(raw).not.toContain('secret-bcc@example.com');
+    expect(sent[0].envelope.to).toContain('secret-bcc@example.com'); // but still delivered via envelope
+  });
+
+  it('reports a successful send even if saving to Sent fails', async () => {
+    const fake = new FakeImap();
+    fake.folders = [{ path: 'Sent', specialUse: '\\Sent' }];
+    fake.append = async () => {
+      throw new Error('mailbox is over quota');
+    };
+    const { sent, sendRaw } = captureSend();
+    const client = await connectServer(server => registerSend(server, managerWith(fake), { sendRaw }));
+    const result = await client.callTool({
+      name: 'email_send',
+      arguments: { account: 'personal', to: ['bob@example.com'], subject: 'Hi', text: 'Body' },
+    });
+    expect(isError(result)).toBe(false); // the send succeeded
+    expect(sent.length).toBe(1);
+    expect(textOf(result)).toMatch(/saving to Sent failed/);
+    expect(textOf(result)).toContain('over quota');
+  });
 });

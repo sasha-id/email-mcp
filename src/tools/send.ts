@@ -94,7 +94,6 @@ export function registerSend(server: McpServer, manager: AccountManager, deps: S
           from: acct.user,
           to,
           cc: cc.length > 0 ? cc : undefined,
-          bcc: bcc.length > 0 ? bcc : undefined,
           subject,
           text,
           html: html || undefined,
@@ -116,13 +115,17 @@ export function registerSend(server: McpServer, manager: AccountManager, deps: S
 
         let appended = '';
         if (acct.appendToSent) {
-          appended = await manager.withClient(account, async client => {
-            const folders = await client.list();
-            const sent = folders.find(f => f.specialUse === '\\Sent');
-            if (!sent) return ' (no \\Sent folder found — copy not saved)';
-            await client.append(sent.path, raw, ['\\Seen']);
-            return ` (saved to ${sent.path})`;
-          });
+          try {
+            appended = await manager.withClient(account, async client => {
+              const folders = await client.list();
+              const sent = folders.find(f => f.specialUse === '\\Sent');
+              if (!sent) return ' (no \\Sent folder found — copy not saved)';
+              await client.append(sent.path, raw, ['\\Seen']);
+              return ` (saved to ${sent.path})`;
+            });
+          } catch (err) {
+            appended = ` (sent, but saving to Sent failed: ${err instanceof Error ? err.message : String(err)})`;
+          }
         }
         return ok(`Sent "${subject}" from ${account} to ${to.join(', ')}.${appended}`);
       }),
