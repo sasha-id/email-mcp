@@ -59,6 +59,24 @@ describe('AccountManager', () => {
       return client === (alive as never) ? 'recovered' : 'wrong-client';
     });
     expect(result).toBe('recovered');
+    expect(attempt).toBe(2); // first attempt threw, retried exactly once
+    expect(dead.callsTo('connect').length).toBe(1);
+    expect(alive.callsTo('connect').length).toBe(1); // a fresh connection was established for the retry
+  });
+
+  it('retries at most once, then propagates a second consecutive drop', async () => {
+    const first = new FakeImap();
+    const second = new FakeImap();
+    const manager = managerWith([first, second]);
+    let attempts = 0;
+    await expect(
+      manager.withClient('personal', async client => {
+        attempts++;
+        (client as unknown as { usable: boolean }).usable = false;
+        throw new Error('dropped again');
+      }),
+    ).rejects.toThrow('dropped again');
+    expect(attempts).toBe(2); // initial attempt + exactly one retry, then propagate
   });
 
   it('does not retry logical errors on a healthy connection', async () => {
