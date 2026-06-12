@@ -22,6 +22,19 @@ interface TokenSet {
   expiresAt: number; // epoch ms
 }
 
+interface Flow {
+  status: 'pending' | 'completed' | 'failed';
+  verificationUri: string;
+  userCode: string;
+  error?: string;
+}
+
+export type FlowStatus =
+  | { state: 'idle' }
+  | { state: 'pending'; verificationUri: string; userCode: string }
+  | { state: 'completed' }
+  | { state: 'failed'; error: string };
+
 export interface M365AuthOptions {
   account: string;
   tenant: string;
@@ -36,6 +49,9 @@ export class M365Auth {
   private readonly clientId: string;
   private readonly tokenDir: string;
   private readonly fetchFn: typeof fetch;
+  private flow: Flow | null = null;
+  /** Resolves when the background poll loop exits. Exposed for the tests. */
+  pollPromise: Promise<void> | null = null;
 
   constructor(opts: M365AuthOptions) {
     this.account = opts.account;
@@ -109,5 +125,71 @@ export class M365Auth {
       expiresAt: Date.now() + (data.expires_in as number) * 1000,
     });
     return data.access_token;
+  }
+
+  flowStatus(): FlowStatus {
+    if (!this.flow) return { state: 'idle' };
+    const flow = this.flow;
+    if (flow.status !== 'pending') this.flow = null; // terminal states are reported once
+    if (flow.status === 'pending') {
+      return { state: 'pending', verificationUri: flow.verificationUri, userCode: flow.userCode };
+    }
+    if (flow.status === 'completed') return { state: 'completed' };
+    return { state: 'failed', error: flow.error ?? 'unknown error' };
+  }
+
+  async startDeviceFlow(): Promise<{ verificationUri: string; userCode: string }> {
+    const { data } = await this.postForm('devicecode', {
+      client_id: this.clientId,
+      scope: SCOPES,
+    });
+    if (typeof data.device_code !== 'string') {
+      throw new Error(
+        `Device code request failed for "${this.account}": ${data.error_description ?? data.error ?? 'unknown error'}`,
+      );
+    }
+    const verificationUri = data.verification_uri as string;
+    const userCode = data.user_code as string;
+    this.flow = { status: 'pending', verificationUri, userCode };
+    this.pollPromise = this.poll(
+      data.device_code,
+      ((data.interval as number) ?? 5) * 1000,
+      Date.now() + (data.expires_in as number) * 1000,
+    );
+    return { verificationUri, userCode };
+  }
+
+  private async poll(deviceCode: string, intervalMs: number, deadline: number): Promise<void> {
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      const { data } = await this.postForm('token', {
+        client_id: this.clientId,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        device_code: deviceCode,
+      });
+      if (typeof data.access_token === 'string') {
+        this.saveTokens({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token as string,
+          expiresAt: Date.now() + (data.expires_in as number) * 1000,
+        });
+        if (this.flow) this.flow.status = 'completed';
+        return;
+      }
+      if (data.error === 'authorization_pending') continue;
+      if (data.error === 'slow_down') {
+        intervalMs += 5000;
+        continue;
+      }
+      if (this.flow) {
+        this.flow.status = 'failed';
+        this.flow.error = data.error_description ?? data.error ?? 'unknown error';
+      }
+      return;
+    }
+    if (this.flow && this.flow.status === 'pending') {
+      this.flow.status = 'failed';
+      this.flow.error = 'Device flow timed out before login completed.';
+    }
   }
 }

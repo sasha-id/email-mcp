@@ -77,3 +77,50 @@ describe('M365Auth.getAccessToken', () => {
     expect(auth.tokenState()).toBe('expired');
   });
 });
+
+const DEVICECODE_OK = {
+  body: {
+    device_code: 'dc-1',
+    user_code: 'ABCD-1234',
+    verification_uri: 'https://microsoft.com/devicelogin',
+    interval: 0,
+    expires_in: 900,
+  },
+};
+
+describe('M365Auth device flow', () => {
+  it('starts a flow, polls through authorization_pending to success, and saves tokens', async () => {
+    const { auth, tokenDir } = makeAuth([
+      DEVICECODE_OK,
+      { status: 400, body: { error: 'authorization_pending' } },
+      { body: { access_token: 'at-flow', refresh_token: 'rt-flow', expires_in: 3600 } },
+    ]);
+    const info = await auth.startDeviceFlow();
+    expect(info).toEqual({ verificationUri: 'https://microsoft.com/devicelogin', userCode: 'ABCD-1234' });
+    expect(auth.flowStatus()).toEqual({
+      state: 'pending',
+      verificationUri: 'https://microsoft.com/devicelogin',
+      userCode: 'ABCD-1234',
+    });
+    await auth.pollPromise;
+    expect(auth.flowStatus()).toEqual({ state: 'completed' });
+    expect(auth.flowStatus()).toEqual({ state: 'idle' }); // terminal state reported once
+    const saved = JSON.parse(readFileSync(join(tokenDir, 'work.json'), 'utf8'));
+    expect(saved.accessToken).toBe('at-flow');
+  });
+
+  it('reports failure when the user denies', async () => {
+    const { auth } = makeAuth([
+      DEVICECODE_OK,
+      { status: 400, body: { error: 'access_denied', error_description: 'user said no' } },
+    ]);
+    await auth.startDeviceFlow();
+    await auth.pollPromise;
+    expect(auth.flowStatus()).toEqual({ state: 'failed', error: 'user said no' });
+  });
+
+  it('throws when the devicecode request itself fails', async () => {
+    const { auth } = makeAuth([{ status: 400, body: { error: 'invalid_client', error_description: 'bad client' } }]);
+    await expect(auth.startDeviceFlow()).rejects.toThrow(/bad client/);
+  });
+});
