@@ -1,7 +1,5 @@
-import PostalMime from 'postal-mime';
 import { describe, expect, it } from 'vitest';
-import { formatAddress, htmlToText, renderEmail, summarizeMessage } from '../src/render.js';
-import { EML_HTML_ONLY, EML_PLAIN, EML_WITH_ATTACHMENT } from './fixtures.js';
+import { formatAddress, htmlToText, renderMessage, summarizeMessage } from '../src/render.js';
 
 describe('htmlToText', () => {
   it('strips tags, styles, and decodes entities', () => {
@@ -40,10 +38,18 @@ describe('summarizeMessage', () => {
   });
 });
 
-describe('renderEmail', () => {
-  it('renders headers and plain-text body', async () => {
-    const email = await PostalMime.parse(EML_PLAIN);
-    const text = renderEmail(email);
+describe('renderMessage', () => {
+  it('renders headers and body', () => {
+    const text = renderMessage({
+      from: { name: 'Alice Example', address: 'alice@example.com' },
+      to: [{ address: 'bob@example.com' }],
+      cc: [{ address: 'carol@example.com' }],
+      date: 'Mon, 01 Jun 2026 10:00:00 +0000',
+      subject: 'Lunch?',
+      messageId: '<plain-1@example.com>',
+      body: 'Sushi at noon?',
+      attachments: [],
+    });
     expect(text).toContain('From: Alice Example <alice@example.com>');
     expect(text).toContain('Cc: carol@example.com');
     expect(text).toContain('Subject: Lunch?');
@@ -51,25 +57,23 @@ describe('renderEmail', () => {
     expect(text).toContain('Sushi at noon?');
   });
 
-  it('falls back to stripped HTML when there is no text part', async () => {
-    const email = await PostalMime.parse(EML_HTML_ONLY);
-    const text = renderEmail(email);
-    expect(text).toContain('First & second item');
-    expect(text).not.toContain('<p>');
-  });
-
-  it('lists attachment metadata without inlining content', async () => {
-    const email = await PostalMime.parse(EML_WITH_ATTACHMENT);
-    const text = renderEmail(email);
+  it('lists attachment metadata without inlining content', () => {
+    const text = renderMessage({
+      from: { address: 'alice@example.com' },
+      subject: 'Quarterly report',
+      body: 'Report attached.',
+      attachments: [{ filename: 'report.pdf', mimeType: 'application/pdf', size: 512_000 }],
+    });
     expect(text).toContain('Attachments:');
-    expect(text).toMatch(/\[0\] report\.pdf — application\/pdf, \d+ bytes/);
-    expect(text).not.toContain('JVBERi0');
+    expect(text).toContain('[0] report.pdf — application/pdf, 512000 bytes');
   });
 
-  it('truncates long bodies with a notice', async () => {
-    const email = await PostalMime.parse(EML_PLAIN);
-    const text = renderEmail(email, { maxBody: 5 });
-    expect(text).toContain('Sushi'.slice(0, 5));
+  it('truncates long bodies with a notice', () => {
+    const text = renderMessage(
+      { from: { address: 'a@x.y' }, subject: 'S', body: 'Sushi at noon?', attachments: [] },
+      { maxBody: 5 },
+    );
+    expect(text).toContain('Sushi');
     expect(text).toContain('[body truncated at 5 characters]');
   });
 });

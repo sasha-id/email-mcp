@@ -73,10 +73,17 @@ export function registerSend(server: McpServer, manager: AccountManager, deps: S
         let references: string | undefined;
         if (replyTo) {
           const original = await manager.withMailbox(account, replyTo.mailbox, async client => {
-            const msg = await client.fetchOne(String(replyTo.uid), { source: true }, { uid: true });
-            const source = msg ? (msg as { source?: Buffer }).source : undefined;
-            if (!source) throw new Error(`replyTo uid ${replyTo.uid} not found in ${account}/${replyTo.mailbox}`);
-            return PostalMime.parse(source);
+            // Threading needs five headers, not the source: a reply target can
+            // carry tens of MB of attachments, and a full-source fetch of it is
+            // slow enough to outlive any sane timeout on a throttled link.
+            const msg = await client.fetchOne(
+              String(replyTo.uid),
+              { headers: ['message-id', 'references', 'subject', 'from', 'reply-to'] },
+              { uid: true },
+            );
+            const headers = msg ? (msg as { headers?: Buffer }).headers : undefined;
+            if (!headers) throw new Error(`replyTo uid ${replyTo.uid} not found in ${account}/${replyTo.mailbox}`);
+            return PostalMime.parse(headers);
           });
           if (original.messageId) {
             inReplyTo = original.messageId;
@@ -121,13 +128,19 @@ export function registerSend(server: McpServer, manager: AccountManager, deps: S
         let appended = '';
         if (acct.appendToSent) {
           try {
-            appended = await manager.withClient(account, async client => {
-              const folders = await client.list();
-              const sent = folders.find(f => f.specialUse === '\\Sent');
-              if (!sent) return ' (no \\Sent folder found — copy not saved)';
-              await client.append(sent.path, raw, ['\\Seen']);
-              return ` (saved to ${sent.path})`;
-            });
+            // retry: false — APPEND is not idempotent; after an ambiguous
+            // drop, re-appending could file a duplicate copy in Sent.
+            appended = await manager.withClient(
+              account,
+              async client => {
+                const folders = await client.list();
+                const sent = folders.find(f => f.specialUse === '\\Sent');
+                if (!sent) return ' (no \\Sent folder found — copy not saved)';
+                await client.append(sent.path, raw, ['\\Seen']);
+                return ` (saved to ${sent.path})`;
+              },
+              { retry: false },
+            );
           } catch (err) {
             appended = ` (sent, but saving to Sent failed: ${err instanceof Error ? err.message : String(err)})`;
           }

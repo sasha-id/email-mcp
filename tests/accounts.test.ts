@@ -110,6 +110,27 @@ describe('AccountManager', () => {
     expect(attempts).toBe(1);
   });
 
+  it('with retry disabled, a dropped connection fails after a single attempt', async () => {
+    // For non-idempotent operations (APPEND) the caller opts out of the
+    // retry-once behaviour entirely.
+    const dead = new FakeImap();
+    const manager = managerWith([dead, new FakeImap()]);
+    let attempts = 0;
+    await expect(
+      manager.withClient(
+        'personal',
+        async client => {
+          attempts++;
+          (client as unknown as { usable: boolean }).usable = false;
+          throw new Error('Connection not available');
+        },
+        { retry: false },
+      ),
+    ).rejects.toThrow('Connection not available');
+    expect(attempts).toBe(1);
+    expect(dead.callsTo('connect').length).toBe(1);
+  });
+
   it('withMailbox acquires and always releases the lock', async () => {
     const fake = new FakeImap();
     const manager = managerWith(fake);
@@ -129,6 +150,55 @@ describe('AccountManager', () => {
     await manager.withClient('personal', async () => null);
     await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
     expect(fake.callsTo('logout').length).toBe(1);
+  });
+
+  it('does not tear down the connection while an operation is in flight', async () => {
+    // The idle reaper must measure idleness, not wall time since acquisition: a slow
+    // fetch (large message on a throttled link) is activity, not idleness.
+    vi.useFakeTimers();
+    const fake = new FakeImap();
+    const manager = managerWith(fake);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    const op = manager.withClient('personal', () => gate);
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    expect(fake.callsTo('logout').length).toBe(0); // still running — hands off
+    release();
+    await op;
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+    expect(fake.callsTo('logout').length).toBe(1); // idle again: reap normally
+  });
+
+  it('tears down an operation hung past the 30-minute cap', async () => {
+    // A genuinely wedged operation must not pin the connection (and its mailbox
+    // lock) forever — the deferral has a generous absolute ceiling.
+    vi.useFakeTimers();
+    const fake = new FakeImap();
+    const manager = managerWith(fake);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    const op = manager.withClient('personal', () => gate);
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    expect(fake.callsTo('logout').length).toBe(0); // busy: deferred, not yet at the cap
+    await vi.advanceTimersByTimeAsync(25 * 60_000);
+    expect(fake.callsTo('logout').length).toBe(1); // 31 minutes hung: hard cap
+    release();
+    await op;
+  });
+
+  it('survives a connection error event and reconnects on next use', async () => {
+    // ImapFlow's emitError() ends in emit('error'); with no listener that
+    // throws and kills the whole MCP process. The manager must absorb it and
+    // evict the client so the next call connects fresh.
+    const dead = new FakeImap();
+    const alive = new FakeImap();
+    const manager = managerWith([dead, alive]);
+    await manager.withClient('personal', async () => 1);
+    dead.emit('error', new Error('Socket timeout')); // throws if unhandled
+    const result = await manager.withClient('personal', async () => 2);
+    expect(result).toBe(2);
+    expect(dead.callsTo('connect').length).toBe(1);
+    expect(alive.callsTo('connect').length).toBe(1); // evicted → fresh connection
   });
 
   it('shares one in-flight connection across concurrent calls', async () => {

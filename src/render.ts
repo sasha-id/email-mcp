@@ -1,5 +1,3 @@
-import type { Email } from 'postal-mime';
-
 export interface AddressLike {
   name?: string;
   address?: string;
@@ -51,18 +49,35 @@ export function summarizeMessage(m: MessageSummary): string {
   return `uid=${m.uid} ${date} ${from} — ${subject}${flags}${size}`;
 }
 
-export function renderEmail(email: Email, opts: { maxBody?: number } = {}): string {
+/**
+ * A message ready to render: headers already parsed, body already plain text
+ * (HTML stripped by the caller), attachments as structure metadata only.
+ * Nothing here requires the full message source to have been transferred.
+ */
+export interface RenderableMessage {
+  from?: AddressLike | null;
+  to?: AddressLike[] | null;
+  cc?: AddressLike[] | null;
+  date?: string | null;
+  subject?: string | null;
+  messageId?: string | null;
+  inReplyTo?: string | null;
+  body: string;
+  attachments: Array<{ filename?: string; mimeType: string; size?: number }>;
+}
+
+export function renderMessage(msg: RenderableMessage, opts: { maxBody?: number } = {}): string {
   const maxBody = opts.maxBody ?? 50_000;
   const lines: string[] = [];
-  lines.push(`From: ${formatAddress(email.from as AddressLike)}`);
-  if (email.to?.length) lines.push(`To: ${email.to.map(a => formatAddress(a as AddressLike)).join(', ')}`);
-  if (email.cc?.length) lines.push(`Cc: ${email.cc.map(a => formatAddress(a as AddressLike)).join(', ')}`);
-  lines.push(`Date: ${email.date ?? '(unknown)'}`);
-  lines.push(`Subject: ${email.subject ?? '(no subject)'}`);
-  if (email.messageId) lines.push(`Message-ID: ${email.messageId}`);
-  if (email.inReplyTo) lines.push(`In-Reply-To: ${email.inReplyTo}`);
+  lines.push(`From: ${formatAddress(msg.from)}`);
+  if (msg.to?.length) lines.push(`To: ${msg.to.map(a => formatAddress(a)).join(', ')}`);
+  if (msg.cc?.length) lines.push(`Cc: ${msg.cc.map(a => formatAddress(a)).join(', ')}`);
+  lines.push(`Date: ${msg.date ?? '(unknown)'}`);
+  lines.push(`Subject: ${msg.subject ?? '(no subject)'}`);
+  if (msg.messageId) lines.push(`Message-ID: ${msg.messageId}`);
+  if (msg.inReplyTo) lines.push(`In-Reply-To: ${msg.inReplyTo}`);
 
-  let body = email.text ?? (email.html ? htmlToText(email.html) : '(no body)');
+  let body = msg.body;
   let notice = '';
   if (body.length > maxBody) {
     body = body.slice(0, maxBody);
@@ -70,11 +85,11 @@ export function renderEmail(email: Email, opts: { maxBody?: number } = {}): stri
   }
   lines.push('', body + notice);
 
-  if (email.attachments.length > 0) {
+  if (msg.attachments.length > 0) {
     lines.push('', 'Attachments:');
-    email.attachments.forEach((a, i) => {
-      const bytes = typeof a.content === 'string' ? a.content.length : a.content.byteLength;
-      lines.push(`  [${i}] ${a.filename ?? '(unnamed)'} — ${a.mimeType}, ${bytes} bytes`);
+    msg.attachments.forEach((a, i) => {
+      const size = a.size !== undefined ? `${a.size} bytes` : 'unknown size';
+      lines.push(`  [${i}] ${a.filename ?? '(unnamed)'} — ${a.mimeType}, ${size}`);
     });
   }
   return lines.join('\n');

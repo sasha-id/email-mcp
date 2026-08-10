@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import type { ImapFlow } from 'imapflow';
 import type { Config } from '../src/config.js';
 import { AccountManager, type ManagerDeps } from '../src/accounts.js';
@@ -14,6 +15,8 @@ export class FakeImap {
   searchResults: number[] = [];
   fetchResults: unknown[] = [];
   fetchOneResult: unknown = false;
+  /** Returned by fetchOne when the query asks for headers/bodyStructure. */
+  metaResult: unknown = false;
   folders: Array<{ path: string; specialUse?: string }> = [];
   statusByPath: Record<string, { messages?: number; unseen?: number }> = {};
 
@@ -40,7 +43,20 @@ export class FakeImap {
     this.record('close', []);
   }
 
-  on(_event: string, _fn: (...args: unknown[]) => void) {}
+  private handlers = new Map<string, Array<(...args: unknown[]) => void>>();
+
+  on(event: string, fn: (...args: unknown[]) => void) {
+    const list = this.handlers.get(event) ?? [];
+    list.push(fn);
+    this.handlers.set(event, list);
+  }
+
+  /** Mirrors EventEmitter semantics: an 'error' event with no listener throws. */
+  emit(event: string, ...args: unknown[]) {
+    const list = this.handlers.get(event) ?? [];
+    if (event === 'error' && list.length === 0) throw args[0];
+    for (const fn of list) fn(...args);
+  }
 
   /** Set to make getMailboxLock throw (e.g. unknown-mailbox tests). */
   lockError: Error | null = null;
@@ -66,6 +82,8 @@ export class FakeImap {
 
   async fetchOne(range: unknown, query: unknown, opts: unknown) {
     this.record('fetchOne', [range, query, opts]);
+    const q = query as { headers?: unknown; bodyStructure?: unknown } | undefined;
+    if (q?.headers || q?.bodyStructure) return this.metaResult;
     return this.fetchOneResult;
   }
 
@@ -101,8 +119,23 @@ export class FakeImap {
     return st;
   }
 
+  /** When set, append() throws it (after appendHook runs). */
+  appendError: Error | null = null;
+  /** Side effect applied inside append(), e.g. () => { this.usable = false }. */
+  appendHook?: () => void;
+
+  /** Decoded content returned by download(), keyed by body part id. */
+  downloads = new Map<string, Buffer>();
+
+  async download(range: unknown, part: string, opts: unknown) {
+    this.record('download', [range, part, opts]);
+    return { meta: {}, content: Readable.from(this.downloads.get(part) ?? Buffer.alloc(0)) };
+  }
+
   async append(path: string, content: unknown, flags?: unknown) {
     this.record('append', [path, content, flags]);
+    this.appendHook?.();
+    if (this.appendError) throw this.appendError;
     return { path };
   }
 }
