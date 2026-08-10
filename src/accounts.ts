@@ -11,6 +11,7 @@ export interface ImapConnectOptions {
   secure: boolean;
   auth: { user: string; pass?: string; accessToken?: string };
   logger: false;
+  autoSelectFamily: boolean;
 }
 
 export type MakeClient = (opts: ImapConnectOptions) => ImapFlow;
@@ -123,6 +124,9 @@ export class AccountManager {
       secure: account.imap.secure ?? account.imap.port === 993,
       auth: await this.imapAuth(name),
       logger: false,
+      // Dual-stack hosts with high IPv4 RTT lose Node's 250ms happy-eyeballs
+      // race on every connection attempt; disable it.
+      autoSelectFamily: false,
     });
     await client.connect();
     this.clients.set(name, client);

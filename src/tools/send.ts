@@ -27,8 +27,13 @@ async function composeRaw(mail: SendMailOptions): Promise<Buffer> {
   return info.message as Buffer;
 }
 
-const defaultSendRaw: NonNullable<SendDeps['sendRaw']> = async (transport, envelope, raw) => {
-  const smtp = nodemailer.createTransport({ ...transport, requireTLS: !transport.secure } as never);
+export const defaultSendRaw: NonNullable<SendDeps['sendRaw']> = async (transport, envelope, raw) => {
+  const smtp = nodemailer.createTransport({
+    ...transport,
+    requireTLS: !transport.secure,
+    // Same happy-eyeballs hazard as IMAP: smtp hosts are dual-stack too.
+    autoSelectFamily: false,
+  } as never);
   try {
     await smtp.sendMail({ envelope, raw });
   } finally {

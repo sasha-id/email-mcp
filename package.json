@@ -1,18 +1,41 @@
 {
   "name": "@sashaid/email-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for multi-account email over IMAP/SMTP — search, read, send, triage, with 1Password and Microsoft 365 OAuth support.",
   "type": "module",
-  "bin": { "email-mcp": "dist/index.js" },
-  "engines": { "node": ">=22" },
+  "bin": {
+    "email-mcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "license": "MIT",
   "author": "Alexander Yusupov",
-  "repository": { "type": "git", "url": "git+https://github.com/sasha-id/email-mcp.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sasha-id/email-mcp.git"
+  },
   "homepage": "https://github.com/sasha-id/email-mcp#readme",
-  "bugs": { "url": "https://github.com/sasha-id/email-mcp/issues" },
-  "keywords": ["mcp", "model-context-protocol", "email", "imap", "smtp", "claude", "claude-code"],
-  "files": ["dist", "accounts.example.json", "skills"],
-  "publishConfig": { "access": "public" },
+  "bugs": {
+    "url": "https://github.com/sasha-id/email-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "email",
+    "imap",
+    "smtp",
+    "claude",
+    "claude-code"
+  ],
+  "files": [
+    "dist",
+    "accounts.example.json",
+    "skills"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
