@@ -110,6 +110,27 @@ describe('AccountManager', () => {
     expect(attempts).toBe(1);
   });
 
+  it('with retry disabled, a dropped connection fails after a single attempt', async () => {
+    // For non-idempotent operations (APPEND) the caller opts out of the
+    // retry-once behaviour entirely.
+    const dead = new FakeImap();
+    const manager = managerWith([dead, new FakeImap()]);
+    let attempts = 0;
+    await expect(
+      manager.withClient(
+        'personal',
+        async client => {
+          attempts++;
+          (client as unknown as { usable: boolean }).usable = false;
+          throw new Error('Connection not available');
+        },
+        { retry: false },
+      ),
+    ).rejects.toThrow('Connection not available');
+    expect(attempts).toBe(1);
+    expect(dead.callsTo('connect').length).toBe(1);
+  });
+
   it('withMailbox acquires and always releases the lock', async () => {
     const fake = new FakeImap();
     const manager = managerWith(fake);

@@ -3,7 +3,7 @@ import { AccountManager } from '../src/accounts.js';
 import type { SmtpTransportOptions } from '../src/tools/send.js';
 import { registerSend } from '../src/tools/send.js';
 import { FakeImap, asImap, fakeConfig, managerWith } from './fakes.js';
-import { EML_REPLY_TARGET } from './fixtures.js';
+import { EML_REPLY_TARGET_HEADERS } from './fixtures.js';
 import { connectServer, isError, textOf } from './mcp.js';
 
 type Sent = { transport: SmtpTransportOptions; envelope: { from: string; to: string[] }; raw: Buffer };
@@ -52,7 +52,7 @@ describe('email_send', () => {
   it('replies in-thread: References/In-Reply-To set, recipient and subject defaulted', async () => {
     const fake = new FakeImap();
     fake.folders = [{ path: 'Sent', specialUse: '\\Sent' }];
-    fake.fetchOneResult = { uid: 9, source: Buffer.from(EML_REPLY_TARGET) };
+    fake.metaResult = { uid: 9, headers: Buffer.from(EML_REPLY_TARGET_HEADERS) };
     const { sent, sendRaw } = captureSend();
     const client = await connectServer(server => registerSend(server, managerWith(fake), { sendRaw }));
     const result = await client.callTool({
@@ -65,6 +65,13 @@ describe('email_send', () => {
     expect(raw).toContain('References: <thread-root-1@example.com> <kickoff-9@example.com>');
     expect(raw).toContain('Subject: Re: Project kickoff');
     expect(sent[0].envelope.to).toEqual(['dana-replies@example.com']); // Reply-To wins over From
+    // Threading needs only a handful of headers — never the full source, which
+    // can be tens of MB of attachments on a reply target.
+    const [, query] = fake.callsTo('fetchOne')[0].args as [unknown, Record<string, unknown>, unknown];
+    expect(query).not.toHaveProperty('source');
+    expect(query.headers).toEqual(
+      expect.arrayContaining(['message-id', 'references', 'subject', 'from', 'reply-to']),
+    );
   });
 
   it('fails without recipients or without smtp config', async () => {
@@ -129,5 +136,28 @@ describe('email_send', () => {
     expect(sent.length).toBe(1);
     expect(textOf(result)).toMatch(/saving to Sent failed/);
     expect(textOf(result)).toContain('over quota');
+  });
+
+  it('does not retry APPEND on a dropped connection — a retry could file a duplicate', async () => {
+    // APPEND is not idempotent: if the connection died after the server
+    // accepted the copy, re-appending on a fresh client would put two copies
+    // in Sent. One attempt, then report the failure.
+    const fake = new FakeImap();
+    fake.folders = [{ path: 'Sent', specialUse: '\\Sent' }];
+    fake.appendHook = () => {
+      fake.usable = false; // connection died around the append
+    };
+    fake.appendError = new Error('Connection not available');
+    const { sent, sendRaw } = captureSend();
+    const client = await connectServer(server => registerSend(server, managerWith(fake), { sendRaw }));
+    const result = await client.callTool({
+      name: 'email_send',
+      arguments: { account: 'personal', to: ['bob@example.com'], subject: 'Hi', text: 'Body' },
+    });
+    expect(isError(result)).toBe(false);
+    expect(sent.length).toBe(1);
+    expect(textOf(result)).toMatch(/saving to Sent failed/);
+    expect(fake.callsTo('append').length).toBe(1); // no silent retry
+    expect(fake.callsTo('connect').length).toBe(1); // and no reconnect for it
   });
 });

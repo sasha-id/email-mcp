@@ -59,3 +59,6 @@ export const EML_REPLY_TARGET = [
   'Shall we start Monday?',
   '',
 ].join('\r\n');
+
+/** Header block of EML_REPLY_TARGET, as a HEADER.FIELDS fetch would return it. */
+export const EML_REPLY_TARGET_HEADERS = EML_REPLY_TARGET.slice(0, EML_REPLY_TARGET.indexOf('\r\n\r\n') + 4);

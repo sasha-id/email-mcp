@@ -14,6 +14,8 @@ export class FakeImap {
   searchResults: number[] = [];
   fetchResults: unknown[] = [];
   fetchOneResult: unknown = false;
+  /** Returned by fetchOne when the query asks for headers/bodyStructure. */
+  metaResult: unknown = false;
   folders: Array<{ path: string; specialUse?: string }> = [];
   statusByPath: Record<string, { messages?: number; unseen?: number }> = {};
 
@@ -79,6 +81,8 @@ export class FakeImap {
 
   async fetchOne(range: unknown, query: unknown, opts: unknown) {
     this.record('fetchOne', [range, query, opts]);
+    const q = query as { headers?: unknown; bodyStructure?: unknown } | undefined;
+    if (q?.headers || q?.bodyStructure) return this.metaResult;
     return this.fetchOneResult;
   }
 
@@ -114,8 +118,15 @@ export class FakeImap {
     return st;
   }
 
+  /** When set, append() throws it (after appendHook runs). */
+  appendError: Error | null = null;
+  /** Side effect applied inside append(), e.g. () => { this.usable = false }. */
+  appendHook?: () => void;
+
   async append(path: string, content: unknown, flags?: unknown) {
     this.record('append', [path, content, flags]);
+    this.appendHook?.();
+    if (this.appendError) throw this.appendError;
     return { path };
   }
 }

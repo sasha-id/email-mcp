@@ -160,7 +160,11 @@ export class AccountManager {
     return client;
   }
 
-  async withClient<T>(name: string, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
+  async withClient<T>(
+    name: string,
+    fn: (client: ImapFlow) => Promise<T>,
+    opts: { retry?: boolean } = {},
+  ): Promise<T> {
     const b = this.busy.get(name) ?? { count: 0, since: Date.now() };
     b.count++;
     this.busy.set(name, b);
@@ -170,6 +174,9 @@ export class AccountManager {
         return await fn(client);
       } catch (err) {
         if (client.usable) throw err; // logical error, not a dropped connection
+        // Non-idempotent operations (APPEND) opt out: a retry could silently
+        // repeat an effect the server already applied.
+        if (opts.retry === false) throw err;
         this.clients.delete(name); // dropped connection: retry once on a fresh client
         const fresh = await this.getClient(name);
         return await fn(fresh);
