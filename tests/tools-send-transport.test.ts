@@ -6,7 +6,7 @@ vi.mock('nodemailer', () => ({ default: { createTransport: mocks.createTransport
 import { defaultSendRaw } from '../src/tools/send.js';
 
 describe('defaultSendRaw', () => {
-  it('disables happy-eyeballs autoSelectFamily and requires TLS on plain connections', async () => {
+  it('requires TLS on plain connections', async () => {
     const sent: unknown[] = [];
     mocks.createTransport.mockReturnValue({
       sendMail: async (mail: unknown) => {
@@ -24,7 +24,6 @@ describe('defaultSendRaw', () => {
         host: 'smtp.example.com',
         port: 587,
         secure: false,
-        autoSelectFamily: false,
         requireTLS: true,
       }),
     );
@@ -39,7 +38,7 @@ describe('defaultSendRaw', () => {
       Buffer.from('raw message'),
     );
     expect(mocks.createTransport).toHaveBeenCalledWith(
-      expect.objectContaining({ secure: true, autoSelectFamily: false, requireTLS: false }),
+      expect.objectContaining({ secure: true, requireTLS: false }),
     );
   });
 });

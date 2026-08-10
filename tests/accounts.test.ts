@@ -45,9 +45,11 @@ describe('AccountManager', () => {
     expect(opts[0].secure).toBe(true); // port 993 implies TLS
   });
 
-  it('disables happy-eyeballs autoSelectFamily on the IMAP connection', async () => {
-    // Dual-stack hosts with high IPv4 RTT lose Node's 250ms happy-eyeballs
-    // race on every connection; pin the family choice instead.
+  it('disables happy-eyeballs autoSelectFamily under tls, where ImapFlow reads it', async () => {
+    // Dual-stack hosts with high IPv4 RTT lose Node's 250ms happy-eyeballs race on
+    // every connection; pin the family choice instead. ImapFlow only forwards
+    // `options.tls` to net/tls.connect, so nesting is what makes this take effect —
+    // the same flag at the top level is accepted and ignored.
     const fake = new FakeImap();
     const opts: Array<Record<string, unknown>> = [];
     const manager = new AccountManager(fakeConfig(), {
@@ -57,7 +59,8 @@ describe('AccountManager', () => {
       },
     });
     await manager.withClient('personal', async () => null);
-    expect(opts[0].autoSelectFamily).toBe(false);
+    expect(opts[0].tls).toEqual({ autoSelectFamily: false });
+    expect(opts[0].autoSelectFamily).toBeUndefined();
   });
 
   it('retries exactly once on a dropped connection', async () => {
