@@ -45,6 +45,21 @@ describe('AccountManager', () => {
     expect(opts[0].secure).toBe(true); // port 993 implies TLS
   });
 
+  it('disables happy-eyeballs autoSelectFamily on the IMAP connection', async () => {
+    // Dual-stack hosts with high IPv4 RTT lose Node's 250ms happy-eyeballs
+    // race on every connection; pin the family choice instead.
+    const fake = new FakeImap();
+    const opts: Array<Record<string, unknown>> = [];
+    const manager = new AccountManager(fakeConfig(), {
+      makeClient: o => {
+        opts.push(o as never);
+        return fake as never;
+      },
+    });
+    await manager.withClient('personal', async () => null);
+    expect(opts[0].autoSelectFamily).toBe(false);
+  });
+
   it('retries exactly once on a dropped connection', async () => {
     const dead = new FakeImap();
     const alive = new FakeImap();
