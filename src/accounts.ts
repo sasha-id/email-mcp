@@ -4,6 +4,9 @@ import { resolvePassword } from './config.js';
 import { M365Auth } from './oauth.js';
 
 const IDLE_MS = 5 * 60_000;
+// A busy connection is never reaped... except a wedged one: an operation hung
+// past this ceiling is presumed dead and the connection is recycled anyway.
+const BUSY_CAP_MS = 30 * 60_000;
 
 export interface ImapConnectOptions {
   host: string;
@@ -31,6 +34,7 @@ export class AccountManager {
   private readonly clients = new Map<string, ImapFlow>();
   private readonly connecting = new Map<string, Promise<ImapFlow>>();
   private readonly idleTimers = new Map<string, NodeJS.Timeout>();
+  private readonly busy = new Map<string, { count: number; since: number }>();
   private readonly auths = new Map<string, M365Auth>();
   private readonly makeClient: MakeClient;
   private readonly deps: ManagerDeps;
@@ -92,13 +96,24 @@ export class AccountManager {
 
   private touch(name: string, client: ImapFlow): void {
     clearTimeout(this.idleTimers.get(name));
-    const timer = setTimeout(() => {
-      this.clients.delete(name);
-      this.idleTimers.delete(name);
-      void client.logout().catch(() => client.close());
-    }, IDLE_MS);
+    const timer = setTimeout(() => this.reap(name, client), IDLE_MS);
     timer.unref?.();
     this.idleTimers.set(name, timer);
+  }
+
+  private reap(name: string, client: ImapFlow): void {
+    // In-flight work is activity, not idleness: defer the reap instead of
+    // logging the connection out from under a slow fetch (ImapFlow surfaces
+    // that as "Connection not available" and withClient then burns another
+    // 5 minutes on a doomed retry).
+    const b = this.busy.get(name);
+    if (b && b.count > 0 && Date.now() - b.since < BUSY_CAP_MS) {
+      this.touch(name, client);
+      return;
+    }
+    this.clients.delete(name);
+    this.idleTimers.delete(name);
+    void client.logout().catch(() => client.close());
   }
 
   async getClient(name: string): Promise<ImapFlow> {
@@ -140,14 +155,28 @@ export class AccountManager {
   }
 
   async withClient<T>(name: string, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
-    const client = await this.getClient(name);
+    const b = this.busy.get(name) ?? { count: 0, since: Date.now() };
+    b.count++;
+    this.busy.set(name, b);
     try {
-      return await fn(client);
-    } catch (err) {
-      if (client.usable) throw err; // logical error, not a dropped connection
-      this.clients.delete(name); // dropped connection: retry once on a fresh client
-      const fresh = await this.getClient(name);
-      return await fn(fresh);
+      const client = await this.getClient(name);
+      try {
+        return await fn(client);
+      } catch (err) {
+        if (client.usable) throw err; // logical error, not a dropped connection
+        this.clients.delete(name); // dropped connection: retry once on a fresh client
+        const fresh = await this.getClient(name);
+        return await fn(fresh);
+      }
+    } finally {
+      b.count--;
+      if (b.count === 0) {
+        this.busy.delete(name);
+        // Restart the idle clock from the end of the last operation, so a
+        // just-finished long fetch still gets its full IDLE_MS of reuse.
+        const pooled = this.clients.get(name);
+        if (pooled) this.touch(name, pooled);
+      }
     }
   }
 

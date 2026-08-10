@@ -131,6 +131,40 @@ describe('AccountManager', () => {
     expect(fake.callsTo('logout').length).toBe(1);
   });
 
+  it('does not tear down the connection while an operation is in flight', async () => {
+    // The idle reaper must measure idleness, not wall time since acquisition: a slow
+    // fetch (large message on a throttled link) is activity, not idleness.
+    vi.useFakeTimers();
+    const fake = new FakeImap();
+    const manager = managerWith(fake);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    const op = manager.withClient('personal', () => gate);
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    expect(fake.callsTo('logout').length).toBe(0); // still running — hands off
+    release();
+    await op;
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+    expect(fake.callsTo('logout').length).toBe(1); // idle again: reap normally
+  });
+
+  it('tears down an operation hung past the 30-minute cap', async () => {
+    // A genuinely wedged operation must not pin the connection (and its mailbox
+    // lock) forever — the deferral has a generous absolute ceiling.
+    vi.useFakeTimers();
+    const fake = new FakeImap();
+    const manager = managerWith(fake);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    const op = manager.withClient('personal', () => gate);
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    expect(fake.callsTo('logout').length).toBe(0); // busy: deferred, not yet at the cap
+    await vi.advanceTimersByTimeAsync(25 * 60_000);
+    expect(fake.callsTo('logout').length).toBe(1); // 31 minutes hung: hard cap
+    release();
+    await op;
+  });
+
   it('shares one in-flight connection across concurrent calls', async () => {
     let made = 0;
     const fake = new FakeImap();
