@@ -28,11 +28,11 @@ async function composeRaw(mail: SendMailOptions): Promise<Buffer> {
 }
 
 export const defaultSendRaw: NonNullable<SendDeps['sendRaw']> = async (transport, envelope, raw) => {
+  // No autoSelectFamily here, unlike IMAP: nodemailer resolves the hostname itself and
+  // connects to a single literal address, so Node never runs a happy-eyeballs race.
   const smtp = nodemailer.createTransport({
     ...transport,
     requireTLS: !transport.secure,
-    // Same happy-eyeballs hazard as IMAP: smtp hosts are dual-stack too.
-    autoSelectFamily: false,
   } as never);
   try {
     await smtp.sendMail({ envelope, raw });
