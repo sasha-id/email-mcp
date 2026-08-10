@@ -62,3 +62,24 @@ export const EML_REPLY_TARGET = [
 
 /** Header block of EML_REPLY_TARGET, as a HEADER.FIELDS fetch would return it. */
 export const EML_REPLY_TARGET_HEADERS = EML_REPLY_TARGET.slice(0, EML_REPLY_TARGET.indexOf('\r\n\r\n') + 4);
+
+/** Header block of EML_WITH_ATTACHMENT, as a BODY.PEEK[HEADER] fetch would return it. */
+export const EML_WITH_ATTACHMENT_HEADERS = EML_WITH_ATTACHMENT.slice(0, EML_WITH_ATTACHMENT.indexOf('\r\n\r\n') + 4);
+
+/** BODYSTRUCTURE of EML_WITH_ATTACHMENT, as imapflow parses it. */
+export const STRUCT_WITH_ATTACHMENT = {
+  type: 'multipart/mixed',
+  childNodes: [
+    { part: '1', type: 'text/plain', size: 17 },
+    {
+      part: '2',
+      type: 'application/pdf',
+      size: 16,
+      disposition: 'attachment',
+      dispositionParameters: { filename: 'report.pdf' },
+    },
+  ],
+};
+
+/** Decoded content of the fixture's report.pdf part (what download() streams). */
+export const PDF_BYTES = Buffer.from('%PDF-1.4\nfake-pdf-bytes');

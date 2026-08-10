@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import type { ImapFlow } from 'imapflow';
 import type { Config } from '../src/config.js';
 import { AccountManager, type ManagerDeps } from '../src/accounts.js';
@@ -122,6 +123,14 @@ export class FakeImap {
   appendError: Error | null = null;
   /** Side effect applied inside append(), e.g. () => { this.usable = false }. */
   appendHook?: () => void;
+
+  /** Decoded content returned by download(), keyed by body part id. */
+  downloads = new Map<string, Buffer>();
+
+  async download(range: unknown, part: string, opts: unknown) {
+    this.record('download', [range, part, opts]);
+    return { meta: {}, content: Readable.from(this.downloads.get(part) ?? Buffer.alloc(0)) };
+  }
 
   async append(path: string, content: unknown, flags?: unknown) {
     this.record('append', [path, content, flags]);
