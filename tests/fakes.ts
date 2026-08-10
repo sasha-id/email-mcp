@@ -40,7 +40,20 @@ export class FakeImap {
     this.record('close', []);
   }
 
-  on(_event: string, _fn: (...args: unknown[]) => void) {}
+  private handlers = new Map<string, Array<(...args: unknown[]) => void>>();
+
+  on(event: string, fn: (...args: unknown[]) => void) {
+    const list = this.handlers.get(event) ?? [];
+    list.push(fn);
+    this.handlers.set(event, list);
+  }
+
+  /** Mirrors EventEmitter semantics: an 'error' event with no listener throws. */
+  emit(event: string, ...args: unknown[]) {
+    const list = this.handlers.get(event) ?? [];
+    if (event === 'error' && list.length === 0) throw args[0];
+    for (const fn of list) fn(...args);
+  }
 
   /** Set to make getMailboxLock throw (e.g. unknown-mailbox tests). */
   lockError: Error | null = null;

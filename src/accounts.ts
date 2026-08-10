@@ -150,6 +150,12 @@ export class AccountManager {
     client.on('close', () => {
       if (this.clients.get(name) === client) this.clients.delete(name);
     });
+    // ImapFlow's emitError() ends in emit('error'); an unhandled 'error' event
+    // throws and kills the whole MCP process. Absorb it and evict the client —
+    // the next getClient connects fresh.
+    client.on('error', () => {
+      if (this.clients.get(name) === client) this.clients.delete(name);
+    });
     this.touch(name, client);
     return client;
   }

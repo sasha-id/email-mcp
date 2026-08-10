@@ -165,6 +165,21 @@ describe('AccountManager', () => {
     await op;
   });
 
+  it('survives a connection error event and reconnects on next use', async () => {
+    // ImapFlow's emitError() ends in emit('error'); with no listener that
+    // throws and kills the whole MCP process. The manager must absorb it and
+    // evict the client so the next call connects fresh.
+    const dead = new FakeImap();
+    const alive = new FakeImap();
+    const manager = managerWith([dead, alive]);
+    await manager.withClient('personal', async () => 1);
+    dead.emit('error', new Error('Socket timeout')); // throws if unhandled
+    const result = await manager.withClient('personal', async () => 2);
+    expect(result).toBe(2);
+    expect(dead.callsTo('connect').length).toBe(1);
+    expect(alive.callsTo('connect').length).toBe(1); // evicted → fresh connection
+  });
+
   it('shares one in-flight connection across concurrent calls', async () => {
     let made = 0;
     const fake = new FakeImap();
