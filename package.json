@@ -1,6 +1,6 @@
 {
   "name": "@sashaid/email-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server for multi-account email over IMAP/SMTP — search, read, send, triage, with 1Password and Microsoft 365 OAuth support.",
   "type": "module",
   "bin": {
@@ -47,6 +47,7 @@
     "imapflow": "^1.4.0",
     "nodemailer": "^8.0.11",
     "postal-mime": "^2.7.4",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

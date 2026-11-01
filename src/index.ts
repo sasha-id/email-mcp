@@ -2,6 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { AccountManager } from './accounts.js';
 import { loadConfig } from './config.js';
+import { rulesCli } from './rules/cli.js';
 import { createServer } from './server.js';
 
 async function main(): Promise<void> {
@@ -19,7 +20,11 @@ async function main(): Promise<void> {
   process.on('SIGTERM', shutdown);
 }
 
-main().catch(err => {
-  console.error(`email-mcp failed to start: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
-});
+if (process.argv[2] === 'rules') {
+  rulesCli(process.argv.slice(3)).then(code => process.exit(code));
+} else {
+  main().catch(err => {
+    console.error(`email-mcp failed to start: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
+}
