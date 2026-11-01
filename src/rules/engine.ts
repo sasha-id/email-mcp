@@ -4,7 +4,7 @@ import { formatAddress, type AddressLike } from '../render.js';
 import { buildSearchQuery } from '../search.js';
 import { analyzeStructure, type StructureNode } from '../structure.js';
 import { bodyText } from '../tools/read.js';
-import { buildClassifierInput, ClassifierClient, DEFAULT_BASE_URL, verdictAction } from './classifier.js';
+import { buildClassifierInput, ClassifierClient, verdictAction } from './classifier.js';
 import type { Action, Conditions, RuleFile } from './schema.js';
 import { RunState, stateKey } from './state.js';
 
@@ -241,7 +241,7 @@ class Engine {
   readonly report: Report;
   private readonly classifiers = new Map<string, ClassifierClient>();
   private readonly apiKey: string | undefined;
-  private readonly baseUrl: string;
+  private readonly baseUrl: string | undefined;
 
   constructor(
     private readonly opts: RunOptions,
@@ -260,10 +260,10 @@ class Engine {
       accounts: {},
       messages: [],
     };
-    if (!opts.noClassifier && !this.apiKey && opts.files.some(f => f.classifier)) {
-      this.warn('LITELLM_API_KEY is not set — classifier skipped for this run (default_action applies)');
+    this.baseUrl = env.LITELLM_BASE_URL || undefined;
+    if (!opts.noClassifier && !(this.apiKey && this.baseUrl) && opts.files.some(f => f.classifier)) {
+      this.warn('LITELLM_BASE_URL or LITELLM_API_KEY is not set — classifier skipped for this run (default_action applies)');
     }
-    this.baseUrl = env.LITELLM_BASE_URL || DEFAULT_BASE_URL;
   }
 
   warn(msg: string): void {
@@ -271,7 +271,7 @@ class Engine {
   }
 
   private classifier(file: RuleFile): ClassifierClient | null {
-    if (!file.classifier || this.opts.noClassifier || !this.apiKey) return null;
+    if (!file.classifier || this.opts.noClassifier || !this.apiKey || !this.baseUrl) return null;
     const provider = file.classifier.provider;
     let client = this.classifiers.get(provider);
     if (!client) {

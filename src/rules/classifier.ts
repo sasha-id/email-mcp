@@ -20,7 +20,6 @@ export const CHOICES: Array<[string, string]> = [
 
 export const VERDICTS = CHOICES.map(([v]) => v);
 
-export const DEFAULT_BASE_URL = 'https://litellm.ts.sasha.id';
 const BODY_CAP = 8_000;
 const HEADER_CAP = 600;
 const MIN_INTERVAL_MS = 200; // ~5 requests per second
@@ -92,7 +91,7 @@ export type ClassifyResult =
 
 export interface ClassifierDeps {
   apiKey: string;
-  baseUrl?: string;
+  baseUrl: string;
   fetchFn?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -157,7 +156,7 @@ export class ClassifierClient {
 
   async classify(text: string): Promise<ClassifyResult> {
     const { path, body } = this.request(text);
-    const url = (this.deps.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '') + path;
+    const url = this.deps.baseUrl.replace(/\/+$/, '') + path;
     const started = this.now();
     const failed = (error: string): ClassifyResult => ({ ok: false, error, latency_ms: this.now() - started });
     for (let attempt = 1; ; attempt++) {

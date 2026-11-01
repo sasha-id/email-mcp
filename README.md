@@ -128,9 +128,8 @@ condition), `sent_thread`, `sent_recipient` (a sender you wrote to in the last
   flag is applied and the report records `folder_missing`.
 - `classify`: send the message to the classifier.
 
-The classifier calls LiteLLM at `LITELLM_BASE_URL` (default
-`https://litellm.ts.sasha.id`) using `LITELLM_API_KEY`. Without a key it is
-skipped for the run and a warning goes in the report. If it fails, the
+The classifier calls LiteLLM at `LITELLM_BASE_URL` using `LITELLM_API_KEY`.
+Without either it is skipped for the run and a warning goes in the report. If it fails, the
 message gets `default_action`, except that a failure never trashes mail. The
 Junk folder is never sent to the classifier.
 

@@ -266,7 +266,7 @@ rules:
 `);
     const { fetchFn, calls } = fetchQueue([luna('fyi', 0.9)]);
     const lines: string[] = [];
-    const report = await run(file, { personal: fake }, { dryRun: true }, { env: { LITELLM_API_KEY: 'k' }, fetchFn, out: l => lines.push(l) });
+    const report = await run(file, { personal: fake }, { dryRun: true }, { env: { LITELLM_API_KEY: 'k', LITELLM_BASE_URL: 'https://llm.test' }, fetchFn, out: l => lines.push(l) });
     expect(fake.mutations()).toEqual([]);
     expect(fake.box('INBOX').messages.every(m => !m.flags?.has('\\Seen'))).toBe(true);
     expect(calls).toHaveLength(1);
@@ -358,6 +358,16 @@ ${extra}`);
     expect(calls).toHaveLength(0);
     expect(report.messages[0]).toMatchObject({ decided_by: 'default', action: 'keep' });
     expect(report.warnings.join()).toMatch(/LITELLM_API_KEY/);
+  });
+
+  it('is skipped with a warning when LITELLM_BASE_URL is missing', async () => {
+    const fake = new MailFake();
+    fake.add('INBOX', msg());
+    const { fetchFn, calls } = fetchQueue([]);
+    const report = await run(file(), { personal: fake }, {}, { env: { LITELLM_API_KEY: 'k' }, fetchFn });
+    expect(calls).toHaveLength(0);
+    expect(report.messages[0]).toMatchObject({ decided_by: 'default', action: 'keep' });
+    expect(report.warnings.join()).toMatch(/LITELLM_BASE_URL/);
   });
 
   it('does not trash when the key is missing and default_action is trash', async () => {
