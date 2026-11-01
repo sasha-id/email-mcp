@@ -49,6 +49,13 @@ async function downloadToBuffer(client: ImapFlow, uid: number, part: string, max
   return Buffer.concat(chunks);
 }
 
+/** Download the displayable body part as text (HTML stripped); null when the message has none. */
+export async function bodyText(client: ImapFlow, uid: number, structure: MessageStructure): Promise<string | null> {
+  if (!structure.body) return null;
+  const raw = await downloadToBuffer(client, uid, structure.body.part, BODY_FETCH_MAX);
+  return structure.body.isHtml ? htmlToText(raw.toString('utf-8')) : raw.toString('utf-8');
+}
+
 export function registerRead(server: McpServer, manager: AccountManager): void {
   server.registerTool(
     'email_read',
@@ -64,11 +71,7 @@ export function registerRead(server: McpServer, manager: AccountManager): void {
     async ({ account, mailbox, uid }) =>
       run(async () => {
         const text = await withMessage(manager, account, mailbox, uid, async (client, { headers, structure }) => {
-          let body = '(no body)';
-          if (structure.body) {
-            const raw = await downloadToBuffer(client, uid, structure.body.part, BODY_FETCH_MAX);
-            body = structure.body.isHtml ? htmlToText(raw.toString('utf-8')) : raw.toString('utf-8');
-          }
+          const body = (await bodyText(client, uid, structure)) ?? '(no body)';
           return renderMessage({
             from: headers.from as AddressLike,
             to: headers.to as AddressLike[] | undefined,
