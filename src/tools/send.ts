@@ -21,7 +21,7 @@ export interface SendDeps {
 }
 
 /** Compose an RFC 822 message via nodemailer's stream transport (no SMTP involved). */
-async function composeRaw(mail: SendMailOptions): Promise<Buffer> {
+export async function composeRaw(mail: SendMailOptions): Promise<Buffer> {
   const composer = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
   const info = await composer.sendMail(mail);
   return info.message as Buffer;

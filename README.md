@@ -133,6 +133,23 @@ Without either it is skipped for the run and a warning goes in the report. If it
 message gets `default_action`, except that a failure never trashes mail. The
 Junk folder is never sent to the classifier.
 
+## Use as a library
+
+The IMAP, SMTP and OAuth code is importable without running the MCP server:
+
+```ts
+import { loadConfig, AccountManager, sendMail } from '@sashaid/email-mcp/lib';
+
+const manager = new AccountManager(loadConfig());
+await manager.withClient('personal', async client => client.list());
+await sendMail(manager, 'personal', { to: ['a@example.com'], subject: 'Hi', text: 'Hello' });
+```
+
+`/lib` exports `loadConfig`, `configPath`, `AccountManager`, `sendMail` and the
+related types (`Config`, `Account`, `SendMailOptions`, `SendMailResult`, `SmtpAuth`, ...).
+`sendMail` uses the account's SMTP settings and auth (password, 1Password, or
+Microsoft 365 OAuth) like the `email_send` tool; it does not file a copy in Sent.
+
 ## Development
 
 ```bash
