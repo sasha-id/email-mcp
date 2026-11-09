@@ -131,9 +131,13 @@ export class AccountManager {
     return promise;
   }
 
-  private async connect(name: string): Promise<ImapFlow> {
+  /**
+   * Connect options for a dedicated IMAP connection (e.g. IMAP IDLE). Auth is
+   * resolved fresh on every call, so M365 reconnects get a current token.
+   */
+  async imapConnectOptions(name: string): Promise<ImapConnectOptions> {
     const account = this.account(name);
-    const client = this.makeClient({
+    return {
       host: account.imap.host,
       port: account.imap.port,
       secure: account.imap.secure ?? account.imap.port === 993,
@@ -144,7 +148,24 @@ export class AccountManager {
       // builds its net/tls.connect options from {host, servername, port} plus
       // `options.tls`, so a top-level autoSelectFamily is dropped without a warning.
       tls: { autoSelectFamily: false },
-    });
+    };
+  }
+
+  /**
+   * Open a new connection that is not pooled, reaped or tracked by the manager.
+   * The caller owns it: close it, and reconnect with a fresh call. A no-op
+   * 'error' listener is attached because an unhandled 'error' event kills the
+   * process; attach your own to observe errors.
+   */
+  async connectDedicated(name: string): Promise<ImapFlow> {
+    const client = this.makeClient(await this.imapConnectOptions(name));
+    client.on('error', () => {});
+    await client.connect();
+    return client;
+  }
+
+  private async connect(name: string): Promise<ImapFlow> {
+    const client = this.makeClient(await this.imapConnectOptions(name));
     await client.connect();
     this.clients.set(name, client);
     client.on('close', () => {
