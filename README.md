@@ -142,13 +142,38 @@ import { loadConfig, AccountManager, sendMail } from '@sashaid/email-mcp/lib';
 
 const manager = new AccountManager(loadConfig());
 await manager.withClient('personal', async client => client.list());
-await sendMail(manager, 'personal', { to: ['a@example.com'], subject: 'Hi', text: 'Hello' });
+await sendMail(manager, 'personal', {
+  to: ['a@example.com'],
+  subject: 'Hi',
+  text: 'Hello',
+  messageId: '<my-id@example.com>', // optional; nodemailer generates one otherwise
+});
 ```
 
-`/lib` exports `loadConfig`, `configPath`, `AccountManager`, `sendMail` and the
-related types (`Config`, `Account`, `SendMailOptions`, `SendMailResult`, `SmtpAuth`, ...).
-`sendMail` uses the account's SMTP settings and auth (password, 1Password, or
-Microsoft 365 OAuth) like the `email_send` tool; it does not file a copy in Sent.
+`/lib` exports `loadConfig`, `configPath`, `AccountManager`, `sendMail`,
+`appendToSentFolder` and the related types (`Config`, `Account`, `SendMailOptions`,
+`SendMailResult`, `SmtpAuth`, `ImapFlow`, ...).
+
+- `sendMail(manager, account, options, deps?)` uses the account's SMTP settings and
+  auth (password, 1Password, or Microsoft 365 OAuth), like the `email_send` tool.
+  `options` takes `to`, `cc`, `bcc`, `subject`, `text`, `html`, `attachments`,
+  `replyTo`, `messageId`, `inReplyTo`, `references` and `appendToSent`. Addresses
+  containing CR or LF are rejected. `attachments` paths are read from disk, so
+  they must be trusted.
+- A copy is filed in `\Sent` when `appendToSent` is true (default: the account's
+  own setting). A failed copy never throws, because the mail has already gone out:
+  check `sentAppended` and `sentAppendError` on the result and do not resend.
+- For IMAP IDLE use a dedicated connection, not the pooled one (pooled clients are
+  closed after 5 minutes idle): `await manager.connectDedicated(account)` returns a
+  connected `ImapFlow` that you own and must close. On reconnect call it again so
+  OAuth tokens are fresh. `manager.imapConnectOptions(account)` returns the raw
+  connect options if you want to create the client yourself. `ImapFlow` is exported
+  as a type only; depend on `imapflow` (`^1.4.0`) yourself if you construct clients.
+- `manager.config` is public and holds plaintext `pass` values: do not log it.
+
+**Breaking change for deep imports:** the package now has an `exports` map, so deep
+imports such as `@sashaid/email-mcp/dist/accounts.js` no longer resolve
+(`ERR_PACKAGE_PATH_NOT_EXPORTED`). Import from `@sashaid/email-mcp/lib` instead.
 
 ## Development
 

@@ -3,6 +3,7 @@ import PostalMime from 'postal-mime';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager, SmtpAuth } from '../accounts.js';
+import { appendToSentFolder } from '../sent.js';
 import { fail, ok, run } from './helpers.js';
 
 export interface SmtpTransportOptions {
@@ -127,23 +128,10 @@ export function registerSend(server: McpServer, manager: AccountManager, deps: S
 
         let appended = '';
         if (acct.appendToSent) {
-          try {
-            // retry: false — APPEND is not idempotent; after an ambiguous
-            // drop, re-appending could file a duplicate copy in Sent.
-            appended = await manager.withClient(
-              account,
-              async client => {
-                const folders = await client.list();
-                const sent = folders.find(f => f.specialUse === '\\Sent');
-                if (!sent) return ' (no \\Sent folder found — copy not saved)';
-                await client.append(sent.path, raw, ['\\Seen']);
-                return ` (saved to ${sent.path})`;
-              },
-              { retry: false },
-            );
-          } catch (err) {
-            appended = ` (sent, but saving to Sent failed: ${err instanceof Error ? err.message : String(err)})`;
-          }
+          const res = await appendToSentFolder(manager, account, raw);
+          if (res.path) appended = ` (saved to ${res.path})`;
+          else if (res.noSentFolder) appended = ' (no \\Sent folder found — copy not saved)';
+          else appended = ` (sent, but saving to Sent failed: ${res.error})`;
         }
         return ok(`Sent "${subject}" from ${account} to ${to.join(', ')}.${appended}`);
       }),

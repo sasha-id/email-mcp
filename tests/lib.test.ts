@@ -48,7 +48,7 @@ describe('lib entry', () => {
     const raw = smtpSent[0].raw.toString();
     expect(raw).toMatch(/Subject: Hello/);
     expect(raw).toMatch(/Body text/);
-    expect(raw).not.toMatch(/b@example\.com/);
+    expect(raw).not.toMatch(/(^|[<\s,])b@example\.com/m);
     expect(result.recipients).toEqual(['a@example.com', 'c@example.com', 'b@example.com']);
   });
 
